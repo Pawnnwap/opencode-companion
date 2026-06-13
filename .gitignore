@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.whl
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data
+sessions.json
+*.db
+*.log
+
+# Default chat sandbox (opencode runs casual chat here)
+temp/
+
+# Models (large files)
+stt/models/*.onnx
+.workbuddy/
+stt/models/
+
+# Live session snapshot (regenerated at runtime; agent context only)
+agents/memory/sessions.md
+
+# Runtime memory (lives in ~/.config/opencode/agent/slime; never the repo)
+agents/memory/recent.md
+agents/memory/facts.md
+agents/memory/reflection.md
+agents/memory/task_current.md
+agents/memory/tasks/
+# Legacy memory files (superseded by recent.md/facts.md; held personal chat — keep out)
+agents/memory/digest.md
+agents/memory/notes.md

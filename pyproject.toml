@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencode-companion"
+version = "0.2.0"
+description = "A pixel-art slime desktop companion that drives opencode by voice or text"
+requires-python = ">=3.9"
+dependencies = [
+    "PySide6>=6.6",
+    "sherpa-onnx>=1.12",
+    "numpy",
+    "soundfile",
+    "sounddevice",
+]
+
+[project.optional-dependencies]
+art = ["pillow>=10"]   # only needed to regenerate sprites (scripts/gen_slime.py)
+dev = ["pytest", "pillow>=10"]
+build = ["pyinstaller>=6", "pillow>=10"]   # portable .exe (scripts/build_exe.py)
+
+[project.scripts]
+companion = "companion.desktop:main"
+companion-cli = "companion.main:main"
+
+[tool.setuptools.packages.find]
+include = ["stt*", "companion*"]
+
+[tool.setuptools.package-data]
+companion = ["assets/*/*.png", "opencode_plugin/*.js"]
+stt = ["models/*"]
