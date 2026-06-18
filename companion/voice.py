@@ -7,8 +7,6 @@ speaks only in text bubbles.
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from typing import Optional
 
 SAMPLE_RATE = 16000
@@ -62,17 +60,13 @@ def record(max_seconds: float = 12.0, silence_seconds: float = 1.6) -> Optional[
 
 
 def transcribe_array(audio) -> str:
-    """Transcribe a float32 numpy array to text."""
-    import soundfile as sf
+    """Transcribe a 16 kHz mono float32 numpy array to text.
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        sf.write(f.name, audio, SAMPLE_RATE)
-        tmp = f.name
-    try:
-        from stt import transcribe
-        return (transcribe(tmp) or "").strip()
-    finally:
-        Path(tmp).unlink(missing_ok=True)
+    ``record()`` already returns audio at the engine's sample rate, so the array
+    is handed straight to the (cached) STT engine — no temp WAV roundtrip.
+    """
+    from stt import transcribe
+    return (transcribe(audio) or "").strip()
 
 
 def listen() -> Optional[str]:

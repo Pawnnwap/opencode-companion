@@ -232,12 +232,16 @@ def _bullets(name: str) -> list[str]:
 
 def _read(name: str) -> str:
     """Read a memory file (runtime first — live memory lives there — then fall
-    back to the version-controlled source seed, e.g. profile.md)."""
-    rt = _runtime_dir() / name
-    if rt.exists():
-        return rt.read_text(encoding="utf-8")
-    src = MEMORY_DIR / name
-    return src.read_text(encoding="utf-8") if src.exists() else ""
+    back to the version-controlled source seed, e.g. profile.md).
+
+    Returns "" if neither is readable, so a missing/locked/corrupt file can never
+    break a memory read (writes already fail soft the same way)."""
+    for path in (_runtime_dir() / name, MEMORY_DIR / name):
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return ""
 
 
 def _write(name: str, text: str):

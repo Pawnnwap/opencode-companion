@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, NamedTuple, Optional
 
@@ -238,21 +239,46 @@ def run_final_text(
         message, session_id, cwd, title, format="json",
         continue_session=False, agent=agent, model=model, files=files,
     )
-    proc: Optional[subprocess.Popen] = None
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
             env=env, creationflags=_NO_WINDOW, startupinfo=_STARTUPINFO,
         )
-        chunks: list[str] = []
-        last_section = ""   # newest non-thinking section, used if no text arrives
-        last_think = ""     # newest reasoning text, used only if nothing else exists
-        new_session_id: Optional[str] = None
-        for line in proc.stdout:  # type: ignore[union-attr]
-            if stop_event and stop_event.is_set():
+    except FileNotFoundError:
+        return OcResult(1, "Error: opencode not found in PATH", None)
+    except OSError as e:
+        return OcResult(1, f"Error: {e}", None)
+
+    # Watchdog: iterating proc.stdout blocks per line with no built-in deadline, so
+    # a silent hang would block this thread forever and neither ``timeout`` nor
+    # ``stop_event`` could break it (both are only observed between lines). A killer
+    # thread enforces both by killing the process, which closes stdout and ends the
+    # read loop.
+    done = threading.Event()
+    timed_out = threading.Event()
+
+    def _watchdog():
+        deadline = time.monotonic() + timeout
+        while not done.wait(0.2):
+            if stop_event is not None and stop_event.is_set():
                 proc.kill()
-                proc.wait()
+                return
+            if time.monotonic() >= deadline:
+                timed_out.set()
+                proc.kill()
+                return
+
+    watcher = threading.Thread(target=_watchdog, daemon=True)
+    watcher.start()
+
+    chunks: list[str] = []
+    last_section = ""   # newest non-thinking section, used if no text arrives
+    last_think = ""     # newest reasoning text, used only if nothing else exists
+    new_session_id: Optional[str] = None
+    try:
+        for line in proc.stdout:  # type: ignore[union-attr]
+            if stop_event is not None and stop_event.is_set():
                 break
             line = line.strip()
             if not line or line[0] != "{":
@@ -296,29 +322,28 @@ def run_final_text(
                 sect = _part_text(part)
                 if sect:
                     last_section = sect
-
-        if not (stop_event and stop_event.is_set()):
-            proc.wait(timeout=timeout)
-
-        # Prefer the assistant's text; if none arrived, fall back to the last
-        # non-thinking section (e.g. a tool's output); as a last resort show the
-        # reasoning (marked) so the reply is never blank.
-        final = "".join(chunks).strip() or last_section.strip()
-        if not final and last_think.strip():
-            final = THINK_MARK + last_think.strip()
-        rc = proc.returncode if proc.returncode is not None else 0
-        if not final and rc != 0:
-            return OcResult(rc, "opencode finished without a reply.", new_session_id)
-        return OcResult(rc, final or "(no reply)", new_session_id)
-
-    except subprocess.TimeoutExpired:
-        if proc:
+    except Exception as e:  # noqa: BLE001 — a read/parse error must not hang the caller
+        return OcResult(1, f"Error: {e}", new_session_id)
+    finally:
+        done.set()                       # tell the watchdog to stand down
+        try:
+            proc.wait(timeout=5)         # reap (it has finished or been killed)
+        except subprocess.TimeoutExpired:
             proc.kill()
-        return OcResult(1, "Error: opencode timed out", None)
-    except FileNotFoundError:
-        return OcResult(1, "Error: opencode not found in PATH", None)
-    except Exception as e:  # noqa: BLE001
-        return OcResult(1, f"Error: {e}", None)
+        watcher.join(timeout=1)
+
+    # Prefer the assistant's text; if none arrived, fall back to the last
+    # non-thinking section (e.g. a tool's output); as a last resort show the
+    # reasoning (marked) so the reply is never blank.
+    final = "".join(chunks).strip() or last_section.strip()
+    if not final and last_think.strip():
+        final = THINK_MARK + last_think.strip()
+    if timed_out.is_set() and not final:
+        return OcResult(1, "Error: opencode timed out", new_session_id)
+    rc = proc.returncode if proc.returncode is not None else 0
+    if not final and rc != 0:
+        return OcResult(rc, "opencode finished without a reply.", new_session_id)
+    return OcResult(rc, final or "(no reply)", new_session_id)
 
 
 def export_session(session_id: str, timeout: int = 30) -> list[dict[str, str]]:
