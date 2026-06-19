@@ -34,20 +34,20 @@ python -m companion.desktop
 
 A tiny slime appears on your screen. Interactions:
 
-- **Click the slime** -- toggle the text input box
+- **Click the slime** -- open/close the chat: shows the input box and the full scrollable history (when closed, only the latest exchange stays pinned above the pet, keeping the desktop calm)
 - **Type + Enter** -- send a message to the active opencode session (or start a new one)
 - **Type `/`** -- dropdown of built-in commands **and** installed opencode agents/skills
 - **Drag the slime** -- move it around your screen
 - **Right-drag the slime** (or **wheel over the slime**) -- resize the companion
 - **Click the camera button** -- screenshot your screen (the pet hides itself) and attach it to your next message; the agent sees it via `opencode run --file`
-- **Click the mic button** (or use `mic` in the CLI) -- push-to-talk, record + transcribe + send
+- **Click the mic button** (or use `mic` in the CLI) -- push-to-talk: record + transcribe + send. **While a task is running the mic turns into a ⏹ Stop button** (or press **Esc**) to cancel it
 - **Wheel over the chat** -- scroll back through history (a thin scrollbar appears on hover)
 - **BUILD / PLAN pill** (top-left) -- toggle modes; **PLAN** runs opencode's read-only agent and blocks every mutating tool (see *Safety* below)
 - **☰ button** -- open the session list: click a session to view its transcript, then type to run a prompt on it via the CLI. A green dot marks a session with a run in flight, blue marks the open one. Pick **↩ Goo (chat)** to return to the companion chat.
 - **System tray icon** -- left-click to show/hide, right-click to quit
 - **x button** -- quit
 
-While the agent works, the bubble shows the live step (e.g. `running command: npm test`) and how long it's been on it, so you can tell what's happening and whether it's stuck.
+While the agent works, the bubble shows the live step (e.g. `running command: npm test`) and how long it's been on it, so you can tell what's happening and whether it's stuck — then hit the ⏹ Stop button (or **Esc**) to cancel.
 
 ### Text-mode REPL (headless)
 

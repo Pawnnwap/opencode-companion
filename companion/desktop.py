@@ -152,6 +152,10 @@ class _Entry(QLineEdit):
 
 
 class Companion(QWidget):
+    # When chat is closed, only the latest exchange is pinned above the pet
+    # (open the chat to see the full scrollable history).
+    _IDLE_TAIL = 2
+
     def __init__(self, model: str | None = None, profile: str = "matcha"):
         super().__init__()
         self.core = Core(model=model, profile=profile)
@@ -279,13 +283,14 @@ class Companion(QWidget):
 
     def _build_widgets(self):
         # text input (hidden until the slime is clicked)
-        self.entry = _Entry(self, self._on_send, self._hide_input)
+        self.entry = _Entry(self, self._on_send, self._on_input_escape)
         self.entry.setStyleSheet(
             f"QLineEdit {{ background: {PANEL}; color: {ENTRY_FG};"
             f" border: 1px solid {PANEL_BORDER}; border-radius: 2px;"
             f" padding: 2px 6px; }}"
             f" QLineEdit:focus {{ border: 1px solid {USER_BG}; }}"
         )
+        self.entry.setPlaceholderText("Talk to Goo · type / for commands")
         self.entry.hide()
         self.input_visible = False
         self._build_slash_menu()
@@ -633,12 +638,25 @@ class Companion(QWidget):
         p.drawEllipse(self._cam_center, self._cam_r, self._cam_r)
         self._paint_glyph(p, CAM_PIXELS, self._cam_center, self._cam_r, CAM_FG)
 
-        # mic button — bright green circle, bottom-right near the slime
-        border = MIC_BORDER_RECORDING if self._mic_pulsing else MIC_BORDER
-        p.setPen(QPen(QColor(border), max(1, self._s(2))))
-        p.setBrush(QColor(self._mic_fill()))
-        p.drawEllipse(self._mic_center, self._mic_r, self._mic_r)
-        self._paint_glyph(p, MIC_PIXELS, self._mic_center, self._mic_r, MIC_FG)
+        # mic button — bright green circle, bottom-right near the slime. While a
+        # task is running (and not recording) it becomes a red Stop button.
+        if self.busy and not self._mic_pulsing:
+            c = self._mic_center
+            p.setPen(QPen(QColor(MIC_BORDER_RECORDING), max(1, self._s(2))))
+            p.setBrush(QColor(MIC_BG_RECORDING))
+            p.drawEllipse(c, self._mic_r, self._mic_r)
+            sq = max(self._s(6), round(self._mic_r * 0.85))   # white "stop" square
+            p.setRenderHint(QPainter.Antialiasing, False)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(WHITE))
+            p.drawRect(c.x() - sq // 2, c.y() - sq // 2, sq, sq)
+            p.setRenderHint(QPainter.Antialiasing, True)
+        else:
+            border = MIC_BORDER_RECORDING if self._mic_pulsing else MIC_BORDER
+            p.setPen(QPen(QColor(border), max(1, self._s(2))))
+            p.setBrush(QColor(self._mic_fill()))
+            p.drawEllipse(self._mic_center, self._mic_r, self._mic_r)
+            self._paint_glyph(p, MIC_PIXELS, self._mic_center, self._mic_r, MIC_FG)
 
     def _paint_glyph(self, p: QPainter, pixels, center: QPoint, r: int, color: str):
         """Draw a pixel-art glyph ('#'/' ' rows) centred in a circle of radius r."""
@@ -1112,6 +1130,20 @@ class Companion(QWidget):
         self.setFocus()
         self.render_bubbles()
 
+    def _on_input_escape(self):
+        """Esc in the input box: cancel a running task if busy, else hide the box."""
+        if self.busy and not self._mic_pulsing:
+            self._stop_current()
+        else:
+            self._hide_input()
+
+    def keyPressEvent(self, e):  # noqa: N802 (Qt override)
+        """Esc cancels a running task when the input box doesn't have focus."""
+        if e.key() == Qt.Key_Escape and self.busy and not self._mic_pulsing:
+            self._stop_current()
+            return
+        super().keyPressEvent(e)
+
     # ── status line ───────────────────────────────────────────────
 
     def _set_status(self, state_text: str):
@@ -1153,11 +1185,18 @@ class Companion(QWidget):
         secs = f"  ({elapsed}s)" if elapsed >= 2 else ""
         return f"{label}{self._dots}{secs}"
 
+    def _history_open(self) -> bool:
+        """Full scrollable history shows in chat mode (input open) or a session
+        view; otherwise only the latest exchange is pinned above the pet."""
+        return self.input_visible or self.view_session_id is not None
+
     def _visible_messages(self):
         base = self.session_msgs if self.view_session_id else self.core.history
         msgs = list(base)
         if self.busy:
             msgs = msgs + [{"role": "pending", "text": self._pending_text()}]
+        if not self._history_open():
+            msgs = msgs[-self._IDLE_TAIL:]   # idle: pin just the latest exchange
         return msgs
 
     def _measure(self, text, wrap):
@@ -1448,6 +1487,8 @@ class Companion(QWidget):
 
     def _on_mic(self):
         if self.busy:
+            if not self._mic_pulsing:
+                self._stop_current()   # during a run the mic doubles as Stop
             return
         if not voice.available():
             self.core.log("error", "STT not installed. `pip install sounddevice sherpa-onnx`")
@@ -1480,6 +1521,7 @@ class Companion(QWidget):
     def _stop_current(self):
         if self.stop_event:
             self.stop_event.set()
+            self._set_status("stopping…")
 
     # ── idle expressions ──────────────────────────────────────────
 
